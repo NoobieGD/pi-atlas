@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "label": "100K browser demo",
+  "count": 100000,
+  "fileBytes": 100000,
+  "sha256Digits": "5ebe8007d764bce33aba7a85a0da0924e96663fbb2e0fd089b9e8cd3be482bc2",
+  "verified": "Pi prefix and complete decimal-file format checked; SHA-256 establishes identity, not mathematical correctness of the entire file",
+  "stats": {
+    "count": 100000,
+    "counts": [
+      9999,
+      10137,
+      9908,
+      10025,
+      9971,
+      10026,
+      10029,
+      10025,
+      9978,
+      9902
+    ],
+    "entropy": 3.3218985909032166,
+    "chiSquare": 4.093,
+    "longestRun": {
+      "digit": "9",
+      "length": 6,
+      "position": 762
+    },
+    "sha256": "5ebe8007d764bce33aba7a85a0da0924e96663fbb2e0fd089b9e8cd3be482bc2"
+  },
+  "preparedAt": "2026-10-25T16:20:52Z",
+  "preparationSeconds": 0.015000000013969839
+}
