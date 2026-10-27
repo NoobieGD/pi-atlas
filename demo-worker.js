@@ -67,7 +67,7 @@ if(typeof self!=='undefined'&&typeof self.postMessage==='function'){
   return{...p,total,data:new TextDecoder().decode(out)};
  }
  async function search(job,p){
-  const started=performance.now(),budget=60000,limit=p.mode==='shape'?60:300;
+  const started=performance.now(),budget=60000,limit=p.allResults?(p.mode==='shape'?500:5000):(p.mode==='shape'?60:300);
   try{
    let query=String(p.query||'').trim(),scheme=p.scheme||'mod26',rule=p.rule||'threshold',alignment=+p.alignment||0;
    if(p.mode==='colors')query=query.replace(/[,\s]/g,'');
