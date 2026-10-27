@@ -1,4 +1,4 @@
-import {Transport} from './transport.js';
+import {Transport} from './transport.js?v=positional5';
 import {Sound} from './sfx.js';
 const $=id=>document.getElementById(id),fmt=n=>Number(n).toLocaleString('en-US'),sound=new Sound();
 const state={count:0,view:'digits',scheme:'mod26',alignment:0,rule:'threshold',cols:100,scale:1,tx:30,ty:55};
@@ -51,13 +51,15 @@ async function connect(base,file){
  try{
   const status=await candidate.init(file);
   if(generation!==connectionGeneration){candidate.close();return;}
-  transport?.close();transport=candidate;jobGeneration++;jobId=null;ready=true;state.count=status.count;
+  transport?.close();transport=candidate;jobGeneration++;jobId=null;ready=true;state.count=status.count;$('apiOffline').hidden=true;
   viewport=new PiViewport(path=>candidate.request(path),draw);
   $('digitCount').textContent=fmt(status.count);
   $('datasetBadge').textContent=fmt(status.count)+' digits'+(status.demo?' · sample':status.localFile?' · local':'');
-  $('engine').textContent=status.scanner+(status.localFile?'':' · '+status.threads+' thread(s)');
+  const revision=status.searchRevision?.match(/-(\d+)$/)?.[1];
+  $('engine').textContent=status.scanner+(status.localFile?'':' · '+status.threads+' thread(s)')+(revision?' · v'+revision:'');
+  $('engine').title=status.searchRevision||'';
   $('jobLabel').textContent=status.demo?'100K sample ready.':status.localFile?'Local file opened.':'Dataset connected.';
-  $('coverage').textContent=status.demo?'Open your digits file to explore all 27.18 billion.':status.localFile?'Your file stays here. Only visible tiles are read. Large searches stream through bounded chunks.':'Visible tiles load on demand. Full-file searches run on the server.';
+  $('coverage').textContent=status.demo?'Open your digits file or connect to the full database.':status.localFile?'Your file stays here. Only visible tiles are read. Large searches stream through bounded chunks.':'Visible tiles load on demand. Full-file searches run on the server.';
   $('searchButton').disabled=false;$('cancel').hidden=true;$('continue').hidden=true;$('progress').value=0;
   matches=[];selected=null;renderResults();refreshKey();
   console.info('Dataset ready:',status.count,'digits in',Math.round(performance.now()-started),'ms');
@@ -66,7 +68,7 @@ async function connect(base,file){
 }
 function readPayload(){const mode=$('searchMode').value;const p={mode,query:$('query').value,scheme:state.scheme,alignment:state.alignment,rule:state.rule,width:state.cols};if(mode==='shape'){p.rows=$('pattern').value.trim().split(/\r?\n/);const w=p.rows[0]?.length||0;if(!p.rows.length||p.rows.length>24||w<1||w>24||p.rows.some(r=>r.length!==w||/[^01?]/.test(r))||!p.rows.some(r=>/[01]/.test(r)))throw Error('Use 1–24 equal-width rows of 0, 1 and ? with at least one filled constraint.');p.sweep=$('sweep').checked;p.minWidth=+$('minWidth').value;p.maxWidth=+$('maxWidth').value;if(p.sweep&&(p.maxWidth-Math.max(w,p.minWidth)+1>(transport.status.maxWidthSweep||64)||p.maxWidth<p.minWidth))throw Error('Choose a width range of at most '+(transport.status.maxWidthSweep||64)+' widths.');}return p;}
 async function runSearch(continuation=false){if(!ready||jobId)return;let payload;try{payload=continuation?{...lastPayload,cursor:nextCursor,afterWidth:nextAfterWidth}:readPayload();}catch(e){notice(e.message);return;}if(!continuation){lastPayload={...payload};matches=[];selected=null;nextCursor=null;renderResults();}const generation=++jobGeneration;const activeTransport=transport;$('searchButton').disabled=true;$('continue').hidden=true;$('cancel').hidden=false;$('progress').value=0;$('jobLabel').textContent='Submitting search…';sound.play('search');
- try{const reply=await activeTransport.request('search',payload);if(generation!==jobGeneration)return;jobId=reply.id;for(;;){await new Promise(r=>setTimeout(r,350));if(generation!==jobGeneration)return;const job=await activeTransport.request('job/'+jobId);$('jobLabel').textContent=job.message||job.status;$('progress').value=job.progress||0;if(['done','error','cancelled'].includes(job.status)){if(job.status==='error')throw Error(job.error||'Search failed');if(job.status==='done'){
+ try{const reply=await activeTransport.request('search',payload);if(generation!==jobGeneration)return;jobId=reply.id;for(;;){await new Promise(r=>setTimeout(r,350));if(generation!==jobGeneration)return;const job=await activeTransport.request('job/'+jobId);if(generation!==jobGeneration)return;$('jobLabel').textContent=job.message||job.status;$('progress').value=job.progress||0;if(['done','error','cancelled'].includes(job.status)){if(job.status==='error')throw Error(job.error||'Search failed');if(job.status==='done'){
  const seen=new Set(matches.map(m=>m.index+':'+(m.width||'')));for(const m of job.matches||[]){const k=m.index+':'+(m.width||'');if(!seen.has(k)&&matches.length<2000){matches.push({...m,mode:payload.mode,scheme:payload.scheme,alignment:payload.alignment,rule:payload.rule});seen.add(k);}}
  nextCursor=job.nextCursor??null;nextAfterWidth=job.nextAfterWidth??-1;$('continue').hidden=nextCursor===null||matches.length>=2000;renderResults();const seconds=Number(job.seconds||0).toFixed(3);$('coverage').textContent=transport.status.demo?`Sample only: ${fmt(state.count)} digits. ${job.capped?'Result page full. Continue to find more.':'Sample search complete.'} ${seconds}s.`:`${job.cacheHit?'Cached result · ':''}${job.complete?'Reached the end of the dataset.':job.capped?'Result page full. Continue to retain overlapping matches.':'Partial scan; time budget reached. Continue from the saved cursor.'} ${job.scanned!==undefined?'Checked through '+fmt(job.scanned)+' '+(payload.mode==='text'?'encoded characters':'digit positions')+'. ':''}${seconds}s${matches.length>=2000?' UI limit: 2,000 matches. Download JSON or refine the query.':''}`;if(matches.length)sound.play('found');
  }break;}}
@@ -88,18 +90,53 @@ const pointers=new Map();let gesture,pointerStart=null,pointerMoved=false;functi
 function save(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}$('screenshot').onclick=()=>canvas.toBlob(b=>{if(b)save(b,'pi-atlas.png');});$('downloadResults').onclick=()=>save(new Blob([JSON.stringify({dataset:transport.status,query:lastPayload,matches,nextCursor,nextAfterWidth,positions:'1-based digits after decimal; index is 0-based in the selected encoding'},null,2)],{type:'application/json'}),'pi-search-results.json');
 function soundLabel(){$('sound').textContent=sound.enabled?'Sound on':'Sound off';}$('sound').onclick=()=>{sound.toggle();soundLabel();};soundLabel();$('settings').onclick=()=>{$('apiUrl').value=transport?.base||'';$('connectionError').textContent='';$('connection').showModal();};$('closeSettings').onclick=()=>$('connection').close();$('connectionForm').onsubmit=async e=>{e.preventDefault();let base=$('apiUrl').value.trim().replace(/\/+$/,'');try{if(base){const url=new URL(base);if(url.username||url.password||url.search||url.hash||url.pathname!=='/')throw Error('Enter only an origin, such as https://api.example.com (without /api).');if(url.protocol!=='https:'&&!(url.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(url.hostname)))throw Error('Use HTTPS for a public server. HTTP is allowed only on localhost.');base=url.origin;}if(jobId)await transport.request('search/cancel',{id:jobId});await connect(base);localStorage.setItem('pi-atlas-api',base);$('connection').close();notice(base?'Connected to the hosted database.':'Local demo connected.');}catch(error){$('connectionError').textContent=error.message;}};
 new ResizeObserver(draw).observe(wrap);document.fonts.ready.then(()=>{viewport?.resetGlyphs();draw();});editor();$('searchButton').disabled=true;draw();
+function showApiOffline(){
+ ready=false;jobGeneration++;jobId=null;
+ $('apiOffline').hidden=false;$('offlineError').textContent='';
+ $('datasetBadge').textContent='API offline';$('jobLabel').textContent='API offline.';
+ $('searchButton').disabled=true;$('cancel').hidden=true;$('continue').hidden=true;
+}
 async function start(){
  const local=location.protocol!=='file:'&&['localhost','127.0.0.1','[::1]'].includes(location.hostname);
  const configured=window.PI_CONFIG?.apiBase||'';
  const saved=window.PI_CONFIG?.requirePublicBackend?'':(localStorage.getItem('pi-atlas-api')||'');
- const base=local&&!window.PI_CONFIG?.requirePublicBackend?location.origin:(configured||saved);
- if(!base&&window.PI_CONFIG?.requirePublicBackend){await connect('');$('jobLabel').textContent='Public backend not configured.';$('coverage').textContent='This is the 100K sample. Set the permanent HTTPS API in config.js before publishing the full dataset.';return;}
- try{await connect(base);}catch(error){
-  await connect('');$('jobLabel').textContent='Server unavailable. Sample opened.';
-  $('coverage').textContent='Use Open digits file for your full dataset, or choose another server in Connection.';
-  if(base)notice('Server unavailable. You can still open your local digits file.');
- }
+ const sameOrigin=window.PI_CONFIG?.sameOrigin&&location.protocol!=='file:';
+ const base=(sameOrigin||(local&&!window.PI_CONFIG?.requirePublicBackend))?location.origin:(configured||saved);
+ const attempt=connectionGeneration+1;
+ $('retryDefaultApi').disabled=true;$('offlineError').textContent='Checking API…';
+ try{
+  if(!base){showApiOffline();return;}
+  await connect(base);
+ }catch(error){
+  if(connectionGeneration===attempt)showApiOffline();
+ }finally{$('retryDefaultApi').disabled=false;$('offlineError').textContent='';}
 }
+$('retryDefaultApi').onclick=()=>start();
+$('openSmallVersion').onclick=async()=>{
+ $('openSmallVersion').disabled=true;$('offlineError').textContent='Opening 100K version…';
+ try{
+  await connect('');state.tx=30;state.ty=55;draw();
+ }catch(error){$('offlineError').textContent='Could not load the 100K version. '+error.message;}
+ finally{$('openSmallVersion').disabled=false;}
+};
+let checkingApi=false;
+function backendChanged(health,status){return ['count','datasetId','searchRevision','instance'].some(key=>health[key]!==undefined&&health[key]!==status[key]);}
+async function checkApiConnection(){
+ if(checkingApi||!transport?.base||transport.status?.demo||transport.status?.localFile)return;
+ const active=transport,generation=connectionGeneration;checkingApi=true;
+ try{
+  const health=await active.request('health');if(health.ok===false)throw Error('API offline');
+  if(transport!==active||connectionGeneration!==generation)return;
+  if(!ready||backendChanged(health,active.status)){
+   await connect(active.base);clampPan();notice('Backend connected · '+fmt(state.count)+' digits.');
+  }
+ }
+ catch{if(transport===active&&connectionGeneration===generation&&ready)showApiOffline();}
+ finally{checkingApi=false;}
+}
+setInterval(checkApiConnection,15000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkApiConnection();});
+window.addEventListener?.('focus',()=>checkApiConnection());
 $('openFile').onclick=()=>$('digitFile').click();
 $('digitFile').onchange=async e=>{
  const file=e.target.files[0];if(!file)return;
