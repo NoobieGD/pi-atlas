@@ -1,3 +1,4 @@
+import {loadPublicConfig} from './config-loader.js?v=ephemeral1';
 import {Transport} from './transport.js?v=allresults6';
 import {ResultsStore} from './results.js?v=allresults6';
 import {Sound} from './sfx.js';
@@ -167,7 +168,7 @@ function save(blob,name){const url=URL.createObjectURL(blob),a=document.createEl
  }catch(error){if(writer)try{await writer.abort();}catch{}if(error.name!=='AbortError')notice(error.message);}
  finally{$('downloadResults').disabled=!resultStore.count;}
 };
-function soundLabel(){$('sound').textContent=sound.enabled?'Sound on':'Sound off';}$('sound').onclick=()=>{sound.toggle();soundLabel();};soundLabel();$('settings').onclick=()=>{$('apiUrl').value=transport?.base||'';$('connectionError').textContent='';$('connection').showModal();};$('closeSettings').onclick=()=>$('connection').close();$('connectionForm').onsubmit=async e=>{e.preventDefault();let base=$('apiUrl').value.trim().replace(/\/+$/,'');try{if(base){const url=new URL(base);if(url.username||url.password||url.search||url.hash||url.pathname!=='/')throw Error('Enter only an origin, such as https://api.example.com (without /api).');if(url.protocol!=='https:'&&!(url.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(url.hostname)))throw Error('Use HTTPS for a public server. HTTP is allowed only on localhost.');base=url.origin;}if(jobId)await transport.request('search/cancel',{id:jobId});await connect(base);localStorage.setItem('pi-atlas-api',base);$('connection').close();notice(base?'Connected to the hosted database.':'Local demo connected.');}catch(error){$('connectionError').textContent=error.message;}};
+function soundLabel(){$('sound').textContent=sound.enabled?'Sound on':'Sound off';}$('sound').onclick=()=>{sound.toggle();soundLabel();};soundLabel();$('settings').onclick=()=>{$('apiUrl').value=transport?.base||'';$('connectionError').textContent='';$('connection').showModal();};$('closeSettings').onclick=()=>$('connection').close();$('connectionForm').onsubmit=async e=>{e.preventDefault();let base=$('apiUrl').value.trim().replace(/\/+$/,'');try{if(base){const url=new URL(base);if(url.username||url.password||url.search||url.hash||url.pathname!=='/')throw Error('Enter only an origin, such as https://api.example.com (without /api).');if(url.protocol!=='https:'&&!(url.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(url.hostname)))throw Error('Use HTTPS for a public server. HTTP is allowed only on localhost.');base=url.origin;}if(jobId)await transport.request('search/cancel',{id:jobId});await connect(base);$('connection').close();notice(base?'Connected to the hosted database.':'Local demo connected.');}catch(error){$('connectionError').textContent=error.message;}};
 window.addEventListener('pagehide',()=>{if(jobId)transport?.request('search/cancel',{id:jobId}).catch(()=>{});jobGeneration++;jobId=null;stopSearch=true;resultStore.close();});
 window.addEventListener('pageshow',event=>{if(event.persisted){resetResults().catch(error=>notice(error.message));$('searchButton').disabled=!ready;$('cancel').hidden=true;$('continue').hidden=true;nextCursor=null;nextAfterWidth=-1;$('jobLabel').textContent='Ready to search.';$('coverage').textContent='Previous collection cleared after leaving the page. Start a new search.';}});
 new ResizeObserver(draw).observe(wrap);document.fonts.ready.then(()=>{viewport?.resetGlyphs();draw();});editor();$('searchButton').disabled=true;draw();
@@ -178,11 +179,11 @@ function showApiOffline(){
  $('searchButton').disabled=true;$('cancel').hidden=true;$('continue').hidden=true;
 }
 async function start(){
+ try{await loadPublicConfig();}catch(error){showApiOffline();$('offlineError').textContent=error.message;return;}
  const local=location.protocol!=='file:'&&['localhost','127.0.0.1','[::1]'].includes(location.hostname);
  const configured=window.PI_CONFIG?.apiBase||'';
- const saved=window.PI_CONFIG?.requirePublicBackend?'':(localStorage.getItem('pi-atlas-api')||'');
  const sameOrigin=window.PI_CONFIG?.sameOrigin&&location.protocol!=='file:';
- const base=(sameOrigin||(local&&!window.PI_CONFIG?.requirePublicBackend))?location.origin:(configured||saved);
+ const base=(sameOrigin||(local&&!window.PI_CONFIG?.requirePublicBackend))?location.origin:configured;
  const attempt=connectionGeneration+1;
  $('retryDefaultApi').disabled=true;$('offlineError').textContent='Checking API…';
  try{
@@ -225,4 +226,6 @@ $('digitFile').onchange=async e=>{
  try{if(jobId)await transport.request('search/cancel',{id:jobId});await connect('',file);state.tx=30;state.ty=55;draw();}
  catch(error){notice(error.message);}
 };
+// Discard API addresses saved by older releases. Manual connections last only for this page.
+try{localStorage.removeItem('pi-atlas-api');}catch{}
 start();

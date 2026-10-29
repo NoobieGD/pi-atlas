@@ -13,7 +13,7 @@ export class Transport {
  }
  rpc(cmd,args={}){const id=++this.next;return new Promise((resolve,reject)=>{this.pending.set(id,{resolve,reject});this.worker.postMessage({id,cmd,args});});}
  async request(path,payload){
-  if(this.base){const response=await fetch(this.base+'/api/'+path,{method:payload===undefined?'GET':'POST',headers:payload===undefined?{}:{'Content-Type':'application/json'},body:payload===undefined?undefined:JSON.stringify(payload),keepalive:path==='search/cancel',signal:AbortSignal.timeout(path==='status'||path==='health'?4000:20000)});let data;try{data=await response.json();}catch{throw Error('Server unavailable (HTTP '+response.status+').');}if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'Server error '+response.status);return data;}
+  if(this.base){const response=await fetch(this.base+'/api/'+path,{cache:'no-store',method:payload===undefined?'GET':'POST',headers:payload===undefined?{}:{'Content-Type':'application/json'},body:payload===undefined?undefined:JSON.stringify(payload),keepalive:path==='search/cancel',signal:AbortSignal.timeout(path==='status'||path==='health'?4000:20000)});let data;try{data=await response.json();}catch{throw Error('Server unavailable (HTTP '+response.status+').');}if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'Server error '+response.status);return data;}
   if(path==='status')return this.status;if(path==='stats')return this.meta?.stats||{count:this.status.count};
   if(path.startsWith('job/')&&path.endsWith('/continue')){
    const id=path.split('/')[1],old=this.jobs.get(id),entry=this.searches.get(id);if(!entry||!old||old.status!=='done')throw Error('Previous result page unavailable');
