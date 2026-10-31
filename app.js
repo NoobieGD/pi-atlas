@@ -1,5 +1,5 @@
 import {loadPublicConfig} from './config-loader.js?v=ephemeral1';
-import {Transport} from './transport.js?v=allresults6';
+import {Transport} from './transport.js?v=range7';
 import {ResultsStore} from './results.js?v=allresults6';
 import {Sound} from './sfx.js';
 const $=id=>document.getElementById(id),fmt=n=>Number(n).toLocaleString('en-US'),sound=new Sound();
@@ -69,7 +69,7 @@ async function connect(base,file){
   return true;
  }catch(e){candidate.close();throw e;}
 }
-function readPayload(){const mode=$('searchMode').value;const p={mode,query:$('query').value,scheme:state.scheme,alignment:state.alignment,rule:state.rule,width:state.cols,allResults:$('allResults').checked};if(mode==='shape'){p.rows=$('pattern').value.trim().split(/\r?\n/);const w=p.rows[0]?.length||0;if(!p.rows.length||p.rows.length>24||w<1||w>24||p.rows.some(r=>r.length!==w||/[^01?]/.test(r))||!p.rows.some(r=>/[01]/.test(r)))throw Error('Use 1–24 equal-width rows of 0, 1 and ? with at least one filled constraint.');p.sweep=$('sweep').checked;p.minWidth=+$('minWidth').value;p.maxWidth=+$('maxWidth').value;if(p.sweep&&(p.maxWidth-Math.max(w,p.minWidth)+1>(transport.status.maxWidthSweep||64)||p.maxWidth<p.minWidth))throw Error('Choose a width range of at most '+(transport.status.maxWidthSweep||64)+' widths.');}return p;}
+function readPayload(){const mode=$('searchMode').value;const p={mode,query:$('query').value,scheme:state.scheme,alignment:state.alignment,rule:state.rule,width:state.cols,allResults:$('allResults').checked};const range=$('searchDigits').value.trim();if(range){const n=Number(range);if(!Number.isSafeInteger(n)||n<1)throw Error('Digits to search must be a positive whole number.');p.searchDigits=n;}if(p.allResults)p.pageSize=mode==='shape'?5000:50000;if(mode==='shape'){p.rows=$('pattern').value.trim().split(/\r?\n/);const w=p.rows[0]?.length||0;if(!p.rows.length||p.rows.length>24||w<1||w>24||p.rows.some(r=>r.length!==w||/[^01?]/.test(r))||!p.rows.some(r=>/[01]/.test(r)))throw Error('Use 1–24 equal-width rows of 0, 1 and ? with at least one filled constraint.');p.sweep=$('sweep').checked;p.minWidth=+$('minWidth').value;p.maxWidth=+$('maxWidth').value;if(p.sweep&&(p.maxWidth-Math.max(w,p.minWidth)+1>(transport.status.maxWidthSweep||64)||p.maxWidth<p.minWidth))throw Error('Choose a width range of at most '+(transport.status.maxWidthSweep||64)+' widths.');}return p;}
 async function resetResults(){
  const old=resultStore;resultStore=new ResultsStore();resultPage=0;resultViewGeneration++;matches=[];selected=null;searchComplete=false;await old.close();renderResults();
 }
@@ -94,7 +94,7 @@ async function runSearch(continuation=false){
   for(;;){
    let job;
    for(;;){
-    await new Promise(resolve=>setTimeout(resolve,350));if(generation!==jobGeneration)return;
+    await new Promise(resolve=>setTimeout(resolve,100));if(generation!==jobGeneration)return;
     job=await activeTransport.request('job/'+jobId);if(generation!==jobGeneration)return;
     $('jobLabel').textContent=job.message||job.status;$('progress').value=job.progress||0;
     if(['done','error','cancelled'].includes(job.status))break;
@@ -108,7 +108,7 @@ async function runSearch(continuation=false){
    searchComplete=job.complete===true;
    await showResultPage();if(generation!==jobGeneration)return;
    const seconds=Number(job.seconds||0).toFixed(3),coverage=job.scanned!==undefined?'Checked through '+fmt(job.scanned)+' '+(payload.mode==='text'?'encoded characters':'digit positions')+'. ':'';
-   $('coverage').textContent=(transport.status.demo?'100K sample · ':'')+(job.cacheHit?'Cached result · ':'')+(job.complete?'Reached the end of the dataset.':payload.allResults?'Collecting all results…':'Result page finished. Continue to search further.')+' '+coverage+seconds+'s for this response.';
+   $('coverage').textContent=(transport.status.demo?'100K sample · ':'')+(job.cacheHit?'Cached result · ':'')+(job.complete?'Reached the end of the requested '+fmt(job.searchDigits??transport.status.count)+' digits.':payload.allResults?'Collecting all results…':'Result page finished. Continue to search further.')+' '+coverage+seconds+'s for this response.';
    if(!payload.allResults||nextCursor===null||stopSearch)break;
    const before=[payload.cursor||0,payload.afterWidth??-1],after=[nextCursor,nextAfterWidth];
    if(after[0]<before[0]||(after[0]===before[0]&&after[1]<=before[1]))throw Error('Search made no progress. Collected results remain available; try again later.');

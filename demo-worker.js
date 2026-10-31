@@ -67,7 +67,8 @@ if(typeof self!=='undefined'&&typeof self.postMessage==='function'){
   return{...p,total,data:new TextDecoder().decode(out)};
  }
  async function search(job,p){
-  const started=performance.now(),budget=60000,limit=p.allResults?(p.mode==='shape'?500:5000):(p.mode==='shape'?60:300);
+  const searchCount=Math.min(count,p.searchDigits??count);
+  const started=performance.now(),budget=8000,limit=p.allResults?Math.min(p.pageSize||(p.mode==='shape'?500:5000),p.mode==='shape'?5000:50000):(p.mode==='shape'?60:300);
   try{
    let query=String(p.query||'').trim(),scheme=p.scheme||'mod26',rule=p.rule||'threshold',alignment=+p.alignment||0;
    if(p.mode==='colors')query=query.replace(/[,\s]/g,'');
@@ -75,7 +76,7 @@ if(typeof self!=='undefined'&&typeof self.postMessage==='function'){
    if(!['digits','colors','text','shape'].includes(p.mode))throw Error('Unknown search mode');
    if(p.mode!=='shape'&&(!query||query.length>2048||/[^\x20-\x7e]/.test(query)))throw Error('Use 1–2,048 ASCII characters.');
    if(['digits','colors'].includes(p.mode)&&/[^0-9]/.test(query))throw Error('Enter digits 0–9.');
-   const text=p.mode==='text',step=text?(scheme==='ascii'?3:2):1,total=Math.max(0,Math.floor((count-(text?alignment:0))/step));
+   const text=p.mode==='text',step=text?(scheme==='ascii'?3:2):1,total=Math.max(0,Math.floor((searchCount-(text?alignment:0))/step));
    const start=Math.min(total,Math.max(0,Math.trunc(p.cursor||0))),matches=[];let end=start,nextWidth=-1;
    if(p.mode==='shape'){
     const rows=p.rows,w=rows?.[0]?.length,h=rows?.length;
@@ -83,13 +84,13 @@ if(typeof self!=='undefined'&&typeof self.postMessage==='function'){
     const widths=p.sweep?Array.from({length:Math.max(0,(+p.maxWidth)-Math.max(w,+p.minWidth)+1)},(_,i)=>Math.max(w,+p.minWidth)+i):[+p.width];
     if(!widths.length||widths.length>64||widths.some(v=>!Number.isInteger(v)||v<w||v>4096))throw Error('Use up to 64 valid row widths.');
     const block=256*1024,halo=(h-1)*Math.max(...widths)+w-1;
-    for(let lo=start;lo<count;lo+=block){
+    for(let lo=start;lo<searchCount;lo+=block){
      if(job.cancel)throw Error('Cancelled');if(performance.now()-started>budget)break;
-     const hi=Math.min(count,lo+block),raw=await read(lo,hi-lo+halo),found=[];
+     const hi=Math.min(searchCount,lo+block),raw=await read(lo,Math.min(searchCount-lo,hi-lo+halo)),found=[];
      for(let wi=0;wi<widths.length;wi++){
       const [part]=await findShapes(raw,rows,[widths[wi]],rule,limit+2,()=>{},()=>job.cancel,lo);
       found.push(...part.filter(m=>m.index<hi-lo).map(m=>({...m,index:m.index+lo,position:m.index+lo+1})));
-      job.progress=(lo+(hi-lo)*(wi+1)/widths.length)/Math.max(count,1);job.message='Searching width '+widths[wi]+' · '+(lo/count*100).toFixed(2)+'%';post(job);
+      job.progress=(lo+(hi-lo)*(wi+1)/widths.length)/Math.max(searchCount,1);job.message='Searching width '+widths[wi]+' · '+(lo/searchCount*100).toFixed(2)+'%';post(job);
      }
      found.sort((a,b)=>a.index-b.index||a.width-b.width);
      matches.push(...found.filter(m=>m.index>start||m.width>(p.afterWidth??-1)).slice(0,limit+1-matches.length));end=hi;
@@ -109,7 +110,7 @@ if(typeof self!=='undefined'&&typeof self.postMessage==='function'){
    }
    if(job.cancel)throw Error('Cancelled');
    const capped=matches.length>limit,page=matches.slice(0,limit),next=capped?(p.mode==='shape'?page.at(-1).index:page.at(-1).index+1):end<total?end:null;
-   Object.assign(job,{status:'done',matches:page,capped,nextCursor:next,nextAfterWidth:nextWidth,complete:next===null,query,scanned:end,totalUnits:total,rangeStart:start,seconds:(performance.now()-started)/1000,progress:next===null?1:job.progress,message:next===null?'Search complete':capped?'Result page full. Continue to find more.':'Time budget reached. Continue to search the rest.'});post(job);
+   Object.assign(job,{searchDigits:searchCount,datasetDigits:count,status:'done',matches:page,capped,nextCursor:next,nextAfterWidth:nextWidth,complete:next===null,query,scanned:end,totalUnits:total,rangeStart:start,seconds:(performance.now()-started)/1000,progress:next===null?1:job.progress,message:next===null?'Search complete':capped?'Result page full. Continue to find more.':'Time budget reached. Continue to search the rest.'});post(job);
   }catch(e){Object.assign(job,{status:job.cancel?'cancelled':'error',message:e.message,error:e.message});post(job);}
  }
  self.onmessage=async({data:{id,cmd,args={}}})=>{

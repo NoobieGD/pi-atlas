@@ -166,3 +166,22 @@ HTTP 400 means invalid input/protocol, 403 means a disallowed origin only when a
 Check **All results** before searching. The website automatically follows all pages and stores matches in browser IndexedDB. Its result list displays 200 records at a time; Previous/Next and the page number let you browse every collected match. This is a view size, not a total cap. Cancel stops further collection and retains collected results. A new search, reconnect or leaving/reloading the page clears its temporary result collection. Browser storage quotas and available disk still apply; storage failure stops visibly rather than silently truncating results.
 
 Save JSON exports the collected results and a completion flag. Browsers supporting direct file saving stream exports to disk. Other browsers use a buffered download up to 128 MiB; for larger exports use the Python client above. This export compatibility limit does not limit search collection or API results. The standalone 100K version also supports automatic collection and paged browsing.
+
+
+## Search a custom number of digits
+
+Set `searchDigits` to a positive integer to search only the first N decimal digits of pi, in every mode. Omit it to search the full available dataset. Values above the dataset length are clamped. The same prefix is preserved for all continuation pages. Only matches entirely within the prefix are returned; text alignment is measured from the beginning of pi. `cursor` remains an encoded-character index for text and a source-digit index for other modes.
+
+GET example: `/api/search?query=12345678&searchDigits=1000000&wait=8`
+
+POST example:
+
+```json
+{"query":"12345","mode":"digits","searchDigits":1000000,"allResults":true,"pageSize":50000}
+```
+
+`pageSize` applies to all-results requests: default 5,000 sequence or 500 shape results; maximum 50,000 sequence or 5,000 shape results. Larger pages reduce continuation requests and use more response bandwidth. They do not change the 25/minute all-results request budget. Use `--search-digits N` and `--page-size N` in api-client.py.
+
+Responses report `searchDigits`, `datasetDigits`, and `completeScope: "requested digit prefix"`. `complete=true` means the selected prefix is exhausted, not necessarily the full dataset. A capped or timed-out page supplies a continuation cursor. The cooperative scan budget is at most eight seconds per page; queued work, storage, network latency, result transfer, and successive pages may take longer. There is no guaranteed eight-second end-to-end completion for arbitrary full-dataset searches or all-result downloads.
+
+Completed jobs are returned without the former fixed two-second polling delay. Exact result pages can be cached for repeated identical searches; cache keys include the prefix, encoding, cursor and page size.

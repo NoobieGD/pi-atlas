@@ -26,9 +26,12 @@ def main():
     parser.add_argument('--rows',help='Pixel rows separated by /');parser.add_argument('--width',type=int,default=200)
     parser.add_argument('--sweep',action='store_true');parser.add_argument('--min-width',type=int,default=6);parser.add_argument('--max-width',type=int,default=64)
     parser.add_argument('--cursor',type=int,default=0);parser.add_argument('--after-width',type=int,default=-1)
+    parser.add_argument('--search-digits',type=int);parser.add_argument('--page-size',type=int)
     args=parser.parse_args();base=args.api.rstrip('/');output=Path(args.output);sidecar=output.with_name(output.name+'.meta.json')
     if output.exists() or sidecar.exists():parser.error('Output or metadata already exists; choose a new output filename')
     p={'mode':args.mode,'query':args.query,'scheme':args.scheme,'alignment':args.alignment,'rule':args.rule,'cursor':args.cursor,'afterWidth':args.after_width,'allResults':True}
+    if args.search_digits is not None:p['searchDigits']=args.search_digits
+    if args.page_size is not None:p['pageSize']=args.page_size
     if args.mode=='shape':
         if not args.rows:parser.error('--rows is required for a shape')
         p.update(rows=args.rows.split('/'),width=args.width,sweep=args.sweep,minWidth=args.min_width,maxWidth=args.max_width)
