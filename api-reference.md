@@ -58,7 +58,7 @@ Set **`"allResults": true`** in the initial search. This removes the overall mat
 3. If `complete` is true, finish. Otherwise POST `/api/job/ID/continue` with `{"page": N}`, using the **current response's zero-based `page`**.
 4. Poll the same job ID for page `N + 1`, then repeat.
 
-Sequence pages hold up to 5,000 matches; pixel pages hold up to 500. These are delivery page sizes, not total-result caps. A page may contain fewer matches if its scan time budget expires. Total scan time can span many pages. Each continuation rejoins the shared worker queue, allowing other visitors to run searches.
+Default pages hold 5,000 sequence matches or 500 pixel matches; pageSize can raise these to 50,000 or 5,000 respectively. These are delivery page sizes, not total-result caps. A page may contain fewer matches if its scan time budget expires. Total scan time can span many pages. Each continuation rejoins the shared worker queue, allowing other visitors to run searches.
 
 ```sh
 curl -X POST https://YOUR-API/api/job/RANDOM_JOB_ID/continue \
