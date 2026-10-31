@@ -21,7 +21,7 @@ def request(base,path,payload=None):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--api',required=True);parser.add_argument('--query',default='');parser.add_argument('--output',required=True)
-    parser.add_argument('--mode',choices=('digits','text','colors','shape'),default='digits');parser.add_argument('--scheme',choices=('mod26','a1z26','ascii'),default='mod26')
+    parser.add_argument('--mode',choices=('digits','text','colors','shape','colorShape'),default='digits');parser.add_argument('--scheme',choices=('mod26','a1z26','ascii'),default='mod26')
     parser.add_argument('--alignment',type=int,default=0);parser.add_argument('--rule',choices=('threshold','parity'),default='threshold')
     parser.add_argument('--rows',help='Pixel rows separated by /');parser.add_argument('--width',type=int,default=200)
     parser.add_argument('--sweep',action='store_true');parser.add_argument('--min-width',type=int,default=6);parser.add_argument('--max-width',type=int,default=64)
@@ -32,7 +32,7 @@ def main():
     p={'mode':args.mode,'query':args.query,'scheme':args.scheme,'alignment':args.alignment,'rule':args.rule,'cursor':args.cursor,'afterWidth':args.after_width,'allResults':True}
     if args.search_digits is not None:p['searchDigits']=args.search_digits
     if args.page_size is not None:p['pageSize']=args.page_size
-    if args.mode=='shape':
+    if args.mode in ('shape','colorShape'):
         if not args.rows:parser.error('--rows is required for a shape')
         p.update(rows=args.rows.split('/'),width=args.width,sweep=args.sweep,minWidth=args.min_width,maxWidth=args.max_width)
     job_id=None;meta={'complete':False,'collectedCount':0,'query':p,'nextCursor':args.cursor,'nextAfterWidth':args.after_width}

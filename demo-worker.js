@@ -10,6 +10,13 @@ function encodeLetters(digits,scheme='mod26',alignment=0){
 function encodeBits(digits,rule='threshold'){
  const out=new Uint8Array(digits.length);for(let i=0;i<digits.length;i++){const v=digits.charCodeAt(i)-48;out[i]=(rule==='parity'?v%2:v>=5)?49:48;}return new TextDecoder().decode(out);
 }
+async function findColorShapes(digits,rows,widths,limit,cancelled){
+ const h=rows.length,w=rows[0].length,cells=[];let anchor={text:'',y:0,x:0};
+ rows.forEach((row,y)=>{for(const match of row.matchAll(/[0-9]+/g))if(match[0].length>anchor.text.length)anchor={text:match[0],y,x:match.index};[...row].forEach((v,x)=>{if(v!=='?')cells.push([y,x,v]);});});
+ if(!anchor.text)throw Error('Paint at least one digit color.');const found=[];let at=0,checks=0;
+ while((at=digits.indexOf(anchor.text,at))>=0){if(cancelled())throw Error('Cancelled');for(const width of widths){const start=at-anchor.y*width-anchor.x;if(start<0||start+(h-1)*width+w>digits.length||start%width+w>width)continue;if(cells.every(([y,x,v])=>digits[start+y*width+x]===v))found.push({index:start,position:start+1,width,height:h,shapeWidth:w});}at++;if(found.length>=limit&&widths.length===1)break;if(++checks%2048===0)await pause();}
+ found.sort((a,b)=>a.index-b.index||a.width-b.width);return[found.slice(0,limit),found.length>limit];
+}
 function findMatches(data,query,limit=300){const matches=[];let at=0;while(matches.length<limit){const p=data.indexOf(query,at);if(p<0)return[matches,false];matches.push(p);at=p+1;}return[matches,data.indexOf(query,at)>=0];}
 async function findShapes(digits,rows,widths,rule='threshold',limit=60,progress=()=>{},cancelled=()=>false,base=0){
  if(!rows.length||rows.length>24)throw Error('Choose a shape of 1–24 rows.');const h=rows.length,w=rows[0].length,n=digits.length;
@@ -68,19 +75,19 @@ if(typeof self!=='undefined'&&typeof self.postMessage==='function'){
  }
  async function search(job,p){
   const searchCount=Math.min(count,p.searchDigits??count);
-  const started=performance.now(),budget=8000,limit=p.allResults?Math.min(p.pageSize||(p.mode==='shape'?500:5000),p.mode==='shape'?5000:50000):(p.mode==='shape'?60:300);
+  const started=performance.now(),budget=8000,limit=p.allResults?Math.min(p.pageSize||(['shape','colorShape'].includes(p.mode)?500:5000),['shape','colorShape'].includes(p.mode)?5000:50000):(['shape','colorShape'].includes(p.mode)?60:300);
   try{
    let query=String(p.query||'').trim(),scheme=p.scheme||'mod26',rule=p.rule||'threshold',alignment=+p.alignment||0;
    if(p.mode==='colors')query=query.replace(/[,\s]/g,'');
    if(p.mode==='text'&&scheme!=='ascii')query=query.toUpperCase();
-   if(!['digits','colors','text','shape'].includes(p.mode))throw Error('Unknown search mode');
-   if(p.mode!=='shape'&&(!query||query.length>2048||/[^\x20-\x7e]/.test(query)))throw Error('Use 1–2,048 ASCII characters.');
+   if(!['digits','colors','text','shape','colorShape'].includes(p.mode))throw Error('Unknown search mode');
+   if(!['shape','colorShape'].includes(p.mode)&&(!query||query.length>2048||/[^\x20-\x7e]/.test(query)))throw Error('Use 1–2,048 ASCII characters.');
    if(['digits','colors'].includes(p.mode)&&/[^0-9]/.test(query))throw Error('Enter digits 0–9.');
    const text=p.mode==='text',step=text?(scheme==='ascii'?3:2):1,total=Math.max(0,Math.floor((searchCount-(text?alignment:0))/step));
    const start=Math.min(total,Math.max(0,Math.trunc(p.cursor||0))),matches=[];let end=start,nextWidth=-1;
-   if(p.mode==='shape'){
+   if(['shape','colorShape'].includes(p.mode)){
     const rows=p.rows,w=rows?.[0]?.length,h=rows?.length;
-    if(!h||h>24||!w||w>24||rows.some(r=>r.length!==w||/[^01?]/.test(r))||!rows.some(r=>/[01]/.test(r)))throw Error('Use an equal-width pattern of 0, 1 and ?.');
+    if(!h||h>24||!w||w>24||rows.some(r=>r.length!==w||(p.mode==='colorShape'?/[^0-9?]/:/[^01?]/).test(r))||!rows.some(r=>(p.mode==='colorShape'?/[0-9]/:/[01]/).test(r)))throw Error('Use an equal-width pattern of 0, 1 and ?.');
     const widths=p.sweep?Array.from({length:Math.max(0,(+p.maxWidth)-Math.max(w,+p.minWidth)+1)},(_,i)=>Math.max(w,+p.minWidth)+i):[+p.width];
     if(!widths.length||widths.length>64||widths.some(v=>!Number.isInteger(v)||v<w||v>4096))throw Error('Use up to 64 valid row widths.');
     const block=256*1024,halo=(h-1)*Math.max(...widths)+w-1;
@@ -88,7 +95,7 @@ if(typeof self!=='undefined'&&typeof self.postMessage==='function'){
      if(job.cancel)throw Error('Cancelled');if(performance.now()-started>budget)break;
      const hi=Math.min(searchCount,lo+block),raw=await read(lo,Math.min(searchCount-lo,hi-lo+halo)),found=[];
      for(let wi=0;wi<widths.length;wi++){
-      const [part]=await findShapes(raw,rows,[widths[wi]],rule,limit+2,()=>{},()=>job.cancel,lo);
+      const [part]=p.mode==='colorShape'?await findColorShapes(raw,rows,[widths[wi]],limit+2,()=>job.cancel):await findShapes(raw,rows,[widths[wi]],rule,limit+2,()=>{},()=>job.cancel,lo);
       found.push(...part.filter(m=>m.index<hi-lo).map(m=>({...m,index:m.index+lo,position:m.index+lo+1})));
       job.progress=(lo+(hi-lo)*(wi+1)/widths.length)/Math.max(searchCount,1);job.message='Searching width '+widths[wi]+' · '+(lo/searchCount*100).toFixed(2)+'%';post(job);
      }
@@ -109,7 +116,7 @@ if(typeof self!=='undefined'&&typeof self.postMessage==='function'){
     if(end>=candidates)end=total;
    }
    if(job.cancel)throw Error('Cancelled');
-   const capped=matches.length>limit,page=matches.slice(0,limit),next=capped?(p.mode==='shape'?page.at(-1).index:page.at(-1).index+1):end<total?end:null;
+   const capped=matches.length>limit,page=matches.slice(0,limit),next=capped?(['shape','colorShape'].includes(p.mode)?page.at(-1).index:page.at(-1).index+1):end<total?end:null;
    Object.assign(job,{searchDigits:searchCount,datasetDigits:count,status:'done',matches:page,capped,nextCursor:next,nextAfterWidth:nextWidth,complete:next===null,query,scanned:end,totalUnits:total,rangeStart:start,seconds:(performance.now()-started)/1000,progress:next===null?1:job.progress,message:next===null?'Search complete':capped?'Result page full. Continue to find more.':'Time budget reached. Continue to search the rest.'});post(job);
   }catch(e){Object.assign(job,{status:job.cancel?'cancelled':'error',message:e.message,error:e.message});post(job);}
  }

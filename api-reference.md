@@ -185,3 +185,24 @@ POST example:
 Responses report `searchDigits`, `datasetDigits`, and `completeScope: "requested digit prefix"`. `complete=true` means the selected prefix is exhausted, not necessarily the full dataset. A capped or timed-out page supplies a continuation cursor. The cooperative scan budget is at most eight seconds per page; queued work, storage, network latency, result transfer, and successive pages may take longer. There is no guaranteed eight-second end-to-end completion for arbitrary full-dataset searches or all-result downloads.
 
 Completed jobs are returned without the former fixed two-second polling delay. Exact result pages can be cached for repeated identical searches; cache keys include the prefix, encoding, cursor and page size.
+
+
+## Exact digit-color pictures and PNG imports
+
+Use mode `colorShape` with rows containing `0`–`9` and `?` (ignore this cell). Each digit is its exact palette color, not a binary threshold. Pictures must be 1–24 rows by 1–24 columns, with equal-width rows and at least one digit. A picture cannot wrap across a source-grid row. `width` is the source grid width, not the picture width. Width sweeps, `searchDigits`, all-results continuation and shape page-size limits also apply.
+
+```json
+{"mode":"colorShape","rows":["141","592"],"width":3,"searchDigits":100000,"allResults":true,"pageSize":5000}
+```
+
+GET example: `/api/search?mode=colorShape&rows=141/592&width=3&searchDigits=100000&wait=8`.
+
+Palette IDs: 0=#ef5350, 1=#ff9e40, 2=#f6d85d, 3=#78cb70, 4=#39bba0, 5=#42b9d5, 6=#5486e8, 7=#a67ce8, 8=#e578b3, 9=#e4e7ee.
+
+The website Color picture mode provides a digit-color brush, wildcard eraser, blank-grid dimensions and PNG/image import. Choose image width and height (1–24 each) before import. Images are stretched to that resolution and resampled by the browser. Each sampled pixel is mapped to the nearest palette color by squared RGB distance; alpha below 32 becomes `?`. Partial transparency otherwise uses the sampled RGB values. The browser sends only quantized rows, never the image file. Preview and edit the digit grid before searching. The API accepts these rows rather than uploaded PNG binaries.
+
+### Timing limits
+
+No twelve-second full-results guarantee is offered: dense patterns may produce billions of matches, and all-results pagination is intentionally limited to 25 requests per minute. The cooperative scan budget remains eight seconds per page, followed by continuation where needed. Queue time, an individual bounded scan block, result serialization and network transfer are outside a hard wall-clock guarantee. Exact completed pages and repeated queries reuse cached results where available.
+
+Large API responses support gzip compression when the client sends `Accept-Encoding: gzip`. Browsers negotiate this automatically; compression reduces transfer size without changing match positions or pagination.

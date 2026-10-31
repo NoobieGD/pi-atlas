@@ -1,7 +1,7 @@
 export class Transport {
  constructor(base=''){this.base=base.replace(/\/+$/,'');this.pending=new Map();this.jobs=new Map();this.searches=new Map();this.next=0;}
  startWorker(){
-  this.worker=window.PI_WORKER?new Worker(URL.createObjectURL(new Blob([window.PI_WORKER],{type:'text/javascript'}))):new Worker(new URL('demo-worker.js?v=range7',document.baseURI));
+  this.worker=window.PI_WORKER?new Worker(URL.createObjectURL(new Blob([window.PI_WORKER],{type:'text/javascript'}))):new Worker(new URL('demo-worker.js?v=color8',document.baseURI));
   this.worker.onmessage=({data})=>{if(data.type==='job'){this.jobs.set(data.job.id,data.job);return;}const p=this.pending.get(data.id);if(p){this.pending.delete(data.id);data.error?p.reject(Error(data.error)):p.resolve(data.result);}};
   this.worker.onerror=()=>{for(const p of this.pending.values())p.reject(Error('Worker failed. Open Pi Atlas.html for the self-contained version.'));this.pending.clear();};
  }
