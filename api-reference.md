@@ -4,7 +4,38 @@ The API searches the digits already held by the server. It does not calculate pi
 
 Replace `https://YOUR-API` in examples with the website's configured API origin, without a trailing `/api`. The website's Connection panel shows its server URL. An API hosted alongside the website uses that website's origin. Read the HTML reference at `/api/docs` on the backend or `api.html` on the frontend.
 
-No account or API key is required. Command-line and server-side clients can use the public URL. Browser JavaScript is subject to the host's existing CORS allowlist; operators can add a frontend origin with `ALLOWED_ORIGINS`. This update does not grant every unrelated browser origin access. Send JSON with `Content-Type: application/json` for POST requests.
+No account, API key, cookies, JavaScript execution or special User-Agent is required. The running API allows every browser origin (`Access-Control-Allow-Origin: *`) with credentials disabled. Command-line clients, AI agents and crawlers can read the same public endpoints. `ALLOWED_ORIGINS=*` is the public deployment default; operators can explicitly configure a browser allowlist for another deployment. Send JSON with `Content-Type: application/json` for POST requests.
+
+**Current hosting limitation (October 28):** the API origin is open, but the anonymous public tunnel was observed prepending Cloudflare-managed rules that disallow OAI-SearchBot, ChatGPT-User and other AI agents. The OpenAI web-fetch tool still could not open that address. This is not fully resolved by the API changes. A hostname whose bot policies you control is needed to remove the upstream block; see PUBLIC-ACCESS.md in the backend package.
+
+## Browser, crawler and AI-agent access
+
+Start at `/api` for machine-readable links. `/openapi.json` is the public OpenAPI schema, with request bodies, parameter constraints and no authentication requirement. `/llms.txt` is a short text usage guide. `/robots.txt` permits OAI-SearchBot, ChatGPT-User and other crawlers; `/sitemap.xml` lists the reference and discovery pages. No origin-application User-Agent or client-IP allowlist blocks a particular external system; upstream hosting policies are separate. The ordinary 60-request limit still applies equally to data/search clients; public discovery/reference pages are exempt.
+
+GET and HEAD are supported on read endpoints. HEAD search/continuation probes never start or advance a search. The API does not expose your local calculator, data directory or full digit files. GET search queries are omitted from the application's access logs, as are client IP addresses.
+
+### GET-only search
+
+Clients that cannot POST can use:
+
+```text
+GET /api/search?mode=digits&query=12345678&wait=10
+GET /api/search?mode=text&scheme=mod26&query=AHHDIH&wait=10
+GET /api/search?mode=text&scheme=ascii&query=dihh&wait=10
+GET /api/search?mode=colors&query=87654321&allResults=true&wait=10
+```
+
+The optional `wait` is 0–10 seconds. With `wait=0`, HTTP 202 returns an `id` and `jobUrl`. With a positive wait, the response includes the job and matches if it finishes (HTTP 200), or its current status and `jobUrl` if it is still running (HTTP 202). Poll the returned `jobUrl` to finish. HTTP 200 is a completed **page**, so check `complete` to determine full-range coverage.
+
+GET accepts the same search settings as POST. For shapes, encode `rows` as slash-separated strings, e.g. `rows=0110/1001/1001/0110&width=100&mode=shape`. URL-encode query values; in particular the `?` wildcard must be encoded inside a URL value.
+
+For all-results continuation, save the completed page once, then use `GET /api/job/ID/continue?page=N` with that page's zero-based `page`. Poll the same job URL for the next page. The POST protocol below remains unchanged.
+
+### Indexing and hosting
+
+Access permission does not guarantee that a search engine or ChatGPT chooses to index a service. OpenAI distinguishes OAI-SearchBot (search discovery) from ChatGPT-User (user-triggered fetching): [official crawler documentation](https://developers.openai.com/api/docs/bots). Robots permission updates can take time to be recognized. Service-side CORS/robots settings cannot override another system's network policy or a hosting provider's bot filter. A stable HTTPS address and reliable uptime help; this PC's temporary tunnel works only while the computer and tunnel are running. No indexing submission or placement guarantee is made.
+
+Set `PUBLIC_API_URL` to the canonical HTTPS origin for absolute OpenAPI and sitemap links. The PC sharing launcher does this automatically while preserving its existing public URL. No authentication or bot challenge is added by this app.
 
 ## Quick start
 
@@ -110,20 +141,25 @@ This abbreviated example omits the remaining matches. Jobs begin as `queued`/`ru
 | `GET /api/status` | Dataset metadata, capabilities, page sizes, indexes and search budget |
 | `GET /api/stats` | Precomputed dataset statistics |
 | `POST /api/search` | Start a job; HTTP 202 with `{ "id": "…" }` |
+| `GET /api/search` | GET-only search, optional bounded `wait` |
 | `GET /api/job/ID` | Poll the latest page/status |
 | `POST /api/job/ID/continue` | All-results continuation; body `{ "page": N }`; HTTP 202 |
+| `GET /api/job/ID/continue?page=N` | GET-only all-results continuation |
 | `POST /api/search/cancel` | Cancel; body `{ "id": "…" }` |
 | `GET /api/digits` | Small encoded window; example `?start=0&count=50&mode=digits` |
 | `GET /api/tile` | Sampled rectangle for a zoomable view |
 | `GET /api/docs` | This public reference as HTML |
+| `GET /openapi.json` | Machine-readable OpenAPI schema |
+| `GET /llms.txt` | Agent-friendly usage guide |
+| `GET /robots.txt`, `/sitemap.xml` | Crawler permission and discovery |
 
 `digits` accepts zero-based `start`, `count` (1–4,096), `mode` (`digits`, `colors`, `text`, `binary`), `scheme`, `rule` and `alignment`. `tile` adds `gridWidth` (1–4,096), `rowStart`, `colStart`, `rows`, `cols`, `rowStep` and `colStep`. Tiles allow at most 450,000 sampled cells and a 64 MiB raw-source span. Step values are 1–4,096. Tile rows are at most 2,048 and columns at most 4,096. Use a dataset window, not a full-file download.
 
 ## Limits, lifetime and errors
 
-New searches allow a burst of three per client and refill one token per 30 seconds. Other API requests, including continuations, allow a burst of 120 and refill ten per second. Honor HTTP 429 `Retry-After`; keep polling modest. Queue capacity and scan time are host-configured; read status for the latter. Requests are at most 16 KiB. Jobs are held in memory, can expire after about one hour of inactivity, may be evicted under job pressure, and disappear after a server restart. Treat job IDs as private handles because anyone possessing one can poll, continue or cancel it.
+Three independent rolling 60-second budgets apply per client: view loading (digits, tiles, stats, job polling and cancellation) allows 500 requests per minute; regular searches across all modes allow 60 requests per rolling 60 seconds; all-results searches (allResults=true), including each continuation page request, allow 25 requests per minute. Health, connection status, documentation and HEAD probes are exempt. HTTP 429 includes Retry-After and X-RateLimit-Limit for the exhausted bucket. Queue limits still apply. Requests are at most 16 KiB. Jobs are held in memory, can expire after about one hour of inactivity, may be evicted under job pressure, and disappear after a server restart. Treat job IDs as private handles because anyone possessing one can poll, continue or cancel it.
 
-HTTP 400 means invalid input/protocol, 403 means a disallowed browser origin, 404 means an unknown/expired job, 413 means an oversized request, 422 means an invalid query-string parameter, and 429 means rate/queue pressure. A job may also report `status: "error"` or `"cancelled"`; neither establishes full-range results. The backend logs omit client IP addresses and raw query contents.
+HTTP 400 means invalid input/protocol, 403 means a disallowed origin only when an operator explicitly enables a browser allowlist, 404 means an unknown/expired job, 413 means an oversized request, 422 means an invalid query-string parameter, and 429 means rate/queue pressure. A job may also report `status: "error"` or `"cancelled"`; neither establishes full-range results. The backend logs omit client IP addresses and raw query contents.
 
 ## Website
 
